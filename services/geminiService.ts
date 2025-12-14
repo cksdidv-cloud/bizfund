@@ -1,8 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { SearchResult, GroundingChunk, BusinessInfo, Region } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 // User provided specific URLs for certain regions
 const REGIONAL_TARGET_URLS: Partial<Record<Region, string>> = {
   [Region.GANGWON]: 'https://www.gwsinbo.or.kr/board/board_list.php?board_name=product',
@@ -13,6 +11,10 @@ const REGIONAL_TARGET_URLS: Partial<Record<Region, string>> = {
 
 export const matchPolicyFunds = async (info: BusinessInfo): Promise<SearchResult> => {
   try {
+    // Initialize AI client inside the function to ensure the latest API Key is used
+    // This allows the key to be updated dynamically via window.aistudio.openSelectKey()
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
     const { region, industry, bizNumber } = info;
     
     // Determine the specific target URL for the selected region
