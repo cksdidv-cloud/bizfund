@@ -1,8 +1,8 @@
 import React, { useState, useRef } from 'react';
-import Header from './components/Header';
-import ResultsView from './components/ResultsView';
-import { matchPolicyFunds } from './services/geminiService';
-import { SearchState, Region, BusinessInfo, ApplicationData } from './types';
+import Header from './components/Header.tsx';
+import ResultsView from './components/ResultsView.tsx';
+import { matchPolicyFunds } from './services/geminiService.ts';
+import { SearchState, Region, BusinessInfo, ApplicationData } from './types.ts';
 
 // Mock Data for Landing Page Content
 const SUCCESS_CASES = [

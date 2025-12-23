@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { SearchResult, GroundingChunk, BusinessInfo, Region, Fund } from "../types";
+import { SearchResult, GroundingChunk, BusinessInfo, Region, Fund } from "../types.ts";
 
 // 1. 전국 공통 지원 기관 (항상 검색 대상)
 const NATIONAL_URLS = [
@@ -52,8 +52,6 @@ export const matchPolicyFunds = async (info: BusinessInfo): Promise<SearchResult
     const targetUrlString = searchTargets.join(', ');
 
     // 3. Prompt Optimization for Speed
-    // Use System Instruction for formatting rules to keep user prompt clean.
-    // Enforce short string lengths (max 30 chars) to reduce output generation time.
     const systemInstruction = `
       You are an expert policy fund consultant.
       Context: Business in ${region}, Industry: ${industry}.
@@ -78,9 +76,8 @@ export const matchPolicyFunds = async (info: BusinessInfo): Promise<SearchResult
 
     // Retry Logic for Google Search Permission (403 Error)
     try {
-        // Attempt 1: Try with Google Search Grounding
         const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: userPrompt,
             config: {
                 systemInstruction: systemInstruction,
@@ -92,31 +89,27 @@ export const matchPolicyFunds = async (info: BusinessInfo): Promise<SearchResult
         groundingChunks = (response.candidates?.[0]?.groundingMetadata?.groundingChunks || []) as GroundingChunk[];
         
     } catch (e: any) {
-        // Handle 403 Permission Denied (Search Tool not enabled/allowed)
         if (e.message && (e.message.includes("403") || e.message.includes("PERMISSION_DENIED") || e.message.includes("permission"))) {
             console.warn("Google Search Grounding failed (403). Falling back to internal knowledge.");
             
-            // Attempt 2: Fallback to Internal Knowledge
             const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: "gemini-3-flash-preview",
                 contents: userPrompt,
                 config: {
-                    // Update instruction for fallback context
                     systemInstruction: systemInstruction + "\n(Note: Live search is unavailable. Suggest standard known funds for this region based on your knowledge.)",
                     temperature: 0.3,
                 },
             });
             text = response.text || "";
-            groundingChunks = []; // No grounding in fallback
+            groundingChunks = []; 
         } else {
-            throw e; // Rethrow other errors
+            throw e;
         }
     }
 
     // Parse JSON from text
     let funds: Fund[] = [];
     try {
-      // Clean up potential markdown formatting if the model ignored instructions
       let cleanText = text.trim();
       if (cleanText.startsWith("```")) {
          cleanText = cleanText.replace(/^```(json)?\s*/, "").replace(/```$/, "");
@@ -124,7 +117,6 @@ export const matchPolicyFunds = async (info: BusinessInfo): Promise<SearchResult
       
       funds = JSON.parse(cleanText);
     } catch (e) {
-      // Last resort extraction
       const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
       if (jsonMatch) {
         try {

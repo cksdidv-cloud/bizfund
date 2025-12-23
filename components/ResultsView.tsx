@@ -1,5 +1,5 @@
 import React from 'react';
-import { SearchResult, Fund } from '../types';
+import { SearchResult, Fund } from '../types.ts';
 
 interface ResultsViewProps {
   data: SearchResult;
@@ -89,7 +89,7 @@ const ResultsView: React.FC<ResultsViewProps> = ({ data, onApplyClick }) => {
                                              className="hidden md:inline-flex flex-shrink-0 items-center justify-center gap-1.5 px-4 py-2 bg-slate-50 hover:bg-blue-50 text-slate-600 hover:text-blue-700 text-sm font-semibold rounded-lg transition-colors border border-slate-200 hover:border-blue-200"
                                            >
                                               공고 확인
-                                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                                            </a>
                                         )}
                                      </div>
