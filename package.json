@@ -4,8 +4,7 @@
   "private": true,
   "description": "Smart search platform for Korean government policy funds using Gemini API",
   "scripts": {
-    "start": "serve .",
-    "build": "echo 'No build step required for browser-based Babel transform'"
+    "start": "serve ."
   },
   "dependencies": {
     "serve": "^14.2.4"
