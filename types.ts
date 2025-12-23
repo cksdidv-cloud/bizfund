@@ -5,8 +5,17 @@ export interface GroundingChunk {
   };
 }
 
+export interface Fund {
+  agency: string; // New field for Agency Name (e.g., 소상공인시장진흥공단)
+  category: string;
+  title: string;
+  url: string;
+  summary: string;
+  eligibility: string;
+}
+
 export interface SearchResult {
-  text: string;
+  funds: Fund[];
   groundingChunks: GroundingChunk[];
 }
 

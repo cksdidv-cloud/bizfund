@@ -73,6 +73,8 @@ const App: React.FC = () => {
     data: null,
   });
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [applicationForm, setApplicationForm] = useState({
@@ -89,17 +91,28 @@ const App: React.FC = () => {
       return;
     }
 
-    // Basic Validation for biz number (format check only)
+    // Basic Validation for biz number
     const bizNumClean = bizInfo.bizNumber.replace(/-/g, '');
     if (bizNumClean.length !== 10) {
       alert("사업자등록번호 10자리를 정확히 입력해주세요.");
       return;
     }
 
+    // Cancel previous request if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     setSearchState({ isLoading: true, error: null, data: null });
 
     try {
       const result = await matchPolicyFunds(bizInfo);
+      
+      if (abortController.signal.aborted) return;
+
       setSearchState({ isLoading: false, error: null, data: result });
       
       // Smooth scroll to results
@@ -108,12 +121,25 @@ const App: React.FC = () => {
       }, 100);
 
     } catch (err: any) {
+      if (abortController.signal.aborted) return;
+
       setSearchState({ 
         isLoading: false, 
         error: err.message || "매칭 분석 중 오류가 발생했습니다.", 
         data: null 
       });
+      setTimeout(() => {
+        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     }
+  };
+
+  const handleStopSearch = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setSearchState(prev => ({ ...prev, isLoading: false, error: "검색이 사용자에 의해 중단되었습니다." }));
   };
 
   // Auto-format business number
@@ -138,7 +164,6 @@ const App: React.FC = () => {
       return;
     }
 
-    // Prepare the final payload simulating a DB write
     const finalData: ApplicationData = {
       ...bizInfo,
       ...applicationForm
@@ -146,7 +171,6 @@ const App: React.FC = () => {
 
     console.log(">>> Saving to Database: ", finalData);
     
-    // UI Feedback
     alert(`${applicationForm.contactName}님, 신청이 완료되었습니다!\n입력하신 연락처(${applicationForm.phoneNumber})로 전문 컨설턴트가 24시간 내에 연락드립니다.`);
     
     setIsModalOpen(false);
@@ -170,7 +194,6 @@ const App: React.FC = () => {
                 </span>
                 실시간 정책자금 매칭 가동 중
               </span>
-              {/* Reduced font size as requested */}
               <h1 className="text-3xl md:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
                 사업자번호와 지역만 입력하면<br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">최적의 자금</span>을 찾아드립니다
@@ -209,7 +232,6 @@ const App: React.FC = () => {
                     className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all font-mono tracking-wide text-lg"
                   />
                 </div>
-                
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700 block">사업장 소재지</label>
                   <div className="relative">
@@ -271,20 +293,19 @@ const App: React.FC = () => {
                   </>
                 )}
               </button>
-              
             </div>
             
+            {/* Security Note */}
             <div className="bg-slate-50/80 px-6 py-3 border-t border-slate-100 flex justify-center text-xs text-slate-500">
                <p>🔒 입력하신 정보는 조회 목적으로만 사용되며 저장되지 않습니다.</p>
             </div>
           </div>
         </div>
 
-        {/* Landing Content: Visible only when no search data */}
+        {/* Content Section (Hidden when searching/results) */}
         {!searchState.data && !searchState.isLoading && (
           <div className="animate-fadeIn pb-20">
-            
-            {/* Stats Section */}
+            {/* Stats */}
             <div className="max-w-4xl mx-auto mb-20">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 text-center divide-x divide-slate-200">
                 <div>
@@ -306,14 +327,13 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* Success Cases Section */}
+            {/* Success Cases */}
             <div className="mb-20">
               <div className="text-center mb-10">
                 <span className="text-blue-600 font-semibold tracking-wide uppercase text-sm">Success Stories</span>
                 <h2 className="text-3xl font-bold text-slate-900 mt-2">최근 자금 조달 성공 사례</h2>
                 <p className="text-slate-500 mt-3">비슷한 업종의 대표님들은 이미 혜택을 받고 계십니다.</p>
               </div>
-              
               <div className="grid md:grid-cols-3 gap-6">
                 {SUCCESS_CASES.map((item) => (
                   <div key={item.id} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
@@ -323,37 +343,24 @@ const App: React.FC = () => {
                     </div>
                     <div className="mb-1 text-sm text-slate-500 font-medium">{item.type}</div>
                     <div className="text-2xl font-bold text-blue-600 mb-4">{item.amount} <span className="text-lg text-slate-800">승인</span></div>
-                    <p className="text-slate-600 text-sm leading-relaxed mb-4 border-t border-slate-50 pt-4">
-                      "{item.desc}"
-                    </p>
-                    <div className="inline-block bg-green-50 text-green-700 text-xs font-bold px-2 py-1 rounded border border-green-100">
-                      👍 {item.badge}
-                    </div>
+                    <p className="text-slate-600 text-sm leading-relaxed mb-4 border-t border-slate-50 pt-4">"{item.desc}"</p>
+                    <div className="inline-block bg-green-50 text-green-700 text-xs font-bold px-2 py-1 rounded border border-green-100">👍 {item.badge}</div>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Testimonials Section */}
+            {/* Reviews */}
             <div className="bg-slate-900 rounded-3xl p-8 md:p-12 text-center md:text-left relative overflow-hidden">
               <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
               <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-purple-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
               
               <div className="relative z-10 grid md:grid-cols-12 gap-10 items-center">
                 <div className="md:col-span-4 space-y-4">
-                  <h2 className="text-3xl font-bold text-white">
-                    대표님들의<br />
-                    생생한 이용 후기
-                  </h2>
-                  <p className="text-slate-400">
-                    정책자금 AI를 통해 자금난을 해결한<br />
-                    1,200여 명의 대표님이 추천합니다.
-                  </p>
-                  <button className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-medium transition-colors">
-                    후기 더보기 →
-                  </button>
+                  <h2 className="text-3xl font-bold text-white">대표님들의<br />생생한 이용 후기</h2>
+                  <p className="text-slate-400">정책자금 AI를 통해 자금난을 해결한<br />1,200여 명의 대표님이 추천합니다.</p>
+                  <button className="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-medium transition-colors">후기 더보기 →</button>
                 </div>
-                
                 <div className="md:col-span-8 grid gap-4">
                   {REVIEWS.map((review) => (
                     <div key={review.id} className="bg-white/10 backdrop-blur-sm p-4 rounded-xl border border-white/10 flex gap-4 items-start text-left">
@@ -368,20 +375,17 @@ const App: React.FC = () => {
                             {[...Array(review.stars)].map((_, i) => <span key={i}>★</span>)}
                           </div>
                         </div>
-                        <p className="text-slate-200 text-sm leading-snug">
-                          {review.text}
-                        </p>
+                        <p className="text-slate-200 text-sm leading-snug">{review.text}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             </div>
-
           </div>
         )}
 
-        {/* Results Section */}
+        {/* Results Area */}
         <div ref={resultsRef} className="scroll-mt-24">
           {searchState.isLoading && (
             <div className="w-full max-w-2xl mx-auto mt-8 p-8 bg-white rounded-2xl shadow-sm border border-slate-100">
@@ -391,33 +395,42 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
                 </div>
                 <div className="text-center space-y-2">
-                  <h3 className="text-xl font-bold text-slate-800">
-                    <span className="text-blue-600">AI</span>가 자금을 매칭하고 있습니다
-                  </h3>
+                  <h3 className="text-xl font-bold text-slate-800"><span className="text-blue-600">AI</span>가 자금을 매칭하고 있습니다</h3>
                   <p className="text-slate-500 text-sm">
                     {bizInfo.region} 지역의 공고와 지원 자격을 분석 중입니다.<br/>
-                    (약 10~20초 소요됩니다)
+                    <span className="font-semibold text-blue-600">약 30초 내외로 소요됩니다</span>
                   </p>
                 </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 max-w-[200px] overflow-hidden">
-                  <div className="h-full bg-blue-600 rounded-full animate-[progress_2s_ease-in-out_infinite] w-1/3"></div>
+                
+                <div className="w-full max-w-[200px] space-y-4">
+                  <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div className="h-full bg-blue-600 rounded-full animate-[progress_2s_ease-in-out_infinite] w-1/3"></div>
+                  </div>
+                  <button 
+                    onClick={handleStopSearch}
+                    className="w-full py-2 text-sm text-slate-500 hover:text-red-600 hover:bg-red-50 border border-slate-200 hover:border-red-200 rounded-lg transition-colors font-medium"
+                  >
+                    검색 중단
+                  </button>
                 </div>
               </div>
             </div>
           )}
-
+          
           {searchState.error && (
-            <div className="w-full max-w-2xl mx-auto mt-8 p-6 bg-red-50 border border-red-100 rounded-xl text-center">
+            <div className="w-full max-w-2xl mx-auto mt-8 p-6 bg-red-50 border border-red-100 rounded-xl text-center animate-fadeIn">
               <div className="inline-flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mb-4">
                 <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-red-900 mb-1">매칭 중 오류가 발생했습니다</h3>
-              <p className="text-red-700 text-sm">{searchState.error}</p>
+              <h3 className="text-lg font-medium text-red-900 mb-1">
+                {searchState.error === "검색이 사용자에 의해 중단되었습니다." ? "검색이 중단되었습니다" : "매칭 중 오류가 발생했습니다"}
+              </h3>
+              <p className="text-red-700 text-sm mb-4">{searchState.error}</p>
               <button 
-                onClick={handleSearch}
-                className="mt-4 px-6 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium transition-colors"
+                onClick={handleSearch} 
+                className="px-6 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium transition-colors"
               >
                 다시 시도하기
               </button>
@@ -427,14 +440,14 @@ const App: React.FC = () => {
           {searchState.data && !searchState.isLoading && (
             <ResultsView 
               data={searchState.data} 
-              onApplyClick={() => setIsModalOpen(true)}
+              onApplyClick={() => setIsModalOpen(true)} 
               userRegion={bizInfo.region}
             />
           )}
         </div>
       </main>
 
-      {/* Bottom CTA for Direct Application */}
+      {/* Bottom CTA */}
       <div className="bg-gradient-to-r from-blue-700 to-indigo-800 py-12 px-4 md:px-8 mt-12">
         <div className="max-w-4xl mx-auto text-center text-white space-y-6">
           <h2 className="text-2xl md:text-3xl font-bold">아직 고민되시나요?</h2>
@@ -442,8 +455,8 @@ const App: React.FC = () => {
             복잡한 과정 없이, 전문가에게 직접 자금 매칭 상담을 신청해보세요.<br className="hidden md:inline"/>
             입력하신 정보가 있다면 자동으로 연동되어 빠르게 신청할 수 있습니다.
           </p>
-          <button
-            onClick={() => setIsModalOpen(true)}
+          <button 
+            onClick={() => setIsModalOpen(true)} 
             className="inline-flex items-center justify-center gap-2 bg-white text-blue-700 text-lg font-bold px-8 py-4 rounded-xl shadow-lg hover:bg-blue-50 transition-all transform hover:-translate-y-1"
           >
             <span>간편 상담 신청하기</span>
@@ -460,16 +473,12 @@ const App: React.FC = () => {
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl transform transition-all scale-100 overflow-hidden">
             <div className="bg-slate-50 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
               <h3 className="text-lg font-bold text-slate-800">전문가 상담 / 자금 매칭 신청</h3>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
-              >
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            
             <form onSubmit={handleSubmitApplication} className="p-6 space-y-5">
               <div className="bg-blue-50 p-4 rounded-lg space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -491,8 +500,8 @@ const App: React.FC = () => {
                   <label className="block text-sm font-bold text-slate-700 mb-1">업체명 (상호)</label>
                   <input 
                     type="text" 
-                    required
-                    value={applicationForm.companyName}
+                    required 
+                    value={applicationForm.companyName} 
                     onChange={(e) => setApplicationForm(prev => ({ ...prev, companyName: e.target.value }))}
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="사업자등록증 상의 업체명"
@@ -502,8 +511,8 @@ const App: React.FC = () => {
                   <label className="block text-sm font-bold text-slate-700 mb-1">담당자 성명</label>
                   <input 
                     type="text" 
-                    required
-                    value={applicationForm.contactName}
+                    required 
+                    value={applicationForm.contactName} 
                     onChange={(e) => setApplicationForm(prev => ({ ...prev, contactName: e.target.value }))}
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="대표자 또는 담당자 성명"
@@ -513,8 +522,8 @@ const App: React.FC = () => {
                   <label className="block text-sm font-bold text-slate-700 mb-1">휴대전화번호</label>
                   <input 
                     type="tel" 
-                    required
-                    value={applicationForm.phoneNumber}
+                    required 
+                    value={applicationForm.phoneNumber} 
                     onChange={(e) => setApplicationForm(prev => ({ ...prev, phoneNumber: e.target.value }))}
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="010-0000-0000"
@@ -524,31 +533,17 @@ const App: React.FC = () => {
 
               <div className="pt-2">
                 <button 
-                  type="submit"
+                  type="submit" 
                   className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-colors shadow-lg shadow-blue-500/30"
                 >
                   상담 신청하기
                 </button>
-                <p className="text-center text-xs text-slate-400 mt-3">
-                  신청하시면 개인정보처리방침에 동의하는 것으로 간주됩니다.
-                </p>
+                <p className="text-center text-xs text-slate-400 mt-3">신청하시면 개인정보처리방침에 동의하는 것으로 간주됩니다.</p>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <footer className="py-8 border-t border-slate-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 text-center md:text-left md:flex justify-between items-center text-slate-500 text-sm">
-          <p>&copy; 2024 www.정책자금ai.biz. All rights reserved.</p>
-          <div className="flex gap-4 justify-center mt-4 md:mt-0">
-            <a href="#" className="hover:text-slate-900">이용약관</a>
-            <a href="#" className="hover:text-slate-900">개인정보처리방침</a>
-            <a href="#" className="hover:text-slate-900">문의하기</a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 };

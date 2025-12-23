@@ -6,6 +6,10 @@
     <title>www.정책자금ai.biz - 소상공인 & 중소기업 맞춤 자금 매칭</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Babel for in-browser JSX transformation if needed -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
     <style>
       body {
         font-family: 'Inter', sans-serif;
@@ -24,19 +28,35 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #94a3b8;
       }
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-fadeIn {
+        animation: fadeIn 0.5s ease-out forwards;
+      }
+      @keyframes progress {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(300%); }
+      }
     </style>
-  <script type="importmap">
+
+    <script type="importmap">
 {
   "imports": {
     "@google/genai": "https://esm.sh/@google/genai@^1.33.0",
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
-</head>
+  </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900">
     <div id="root"></div>
+
+    <!-- Main Entry Point -->
+    <script type="text/babel" data-type="module" src="./index.tsx"></script>
   </body>
 </html>

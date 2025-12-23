@@ -1,79 +1,151 @@
 import { GoogleGenAI } from "@google/genai";
-import { SearchResult, GroundingChunk, BusinessInfo, Region } from "../types";
+import { SearchResult, GroundingChunk, BusinessInfo, Region, Fund } from "../types";
 
-// User provided specific URLs for certain regions
-const REGIONAL_TARGET_URLS: Partial<Record<Region, string>> = {
-  [Region.GANGWON]: 'https://www.gwsinbo.or.kr/board/board_list.php?board_name=product',
-  [Region.GYEONGGI]: 'https://www.gcgf.or.kr/gcgf/cm/conts/contsView.do?mi=1051&contsId=1022',
-  [Region.BUSAN]: 'https://www.busansinbo.or.kr/portal/board/post/list.do?bcIdx=623&mid=0103010000&token=1765718429302',
-  [Region.GYEONGNAM]: 'https://www.gnsinbo.or.kr/bbs/content.php?co_id=2_2',
+// 1. 전국 공통 지원 기관 (항상 검색 대상)
+const NATIONAL_URLS = [
+  "https://www.sbiz24.kr/",       // 소상공인시장진흥공단 (24)
+  "https://www.kosmes.or.kr/",    // 중소벤처기업진흥공단
+  "https://www.kodit.co.kr/",     // 신용보증기금
+  "https://www.kibo.or.kr/",      // 기술보증기금
+];
+
+// 2. 지역별 신용보증재단 매핑 (사용자 선택 지역에 따라 타겟팅)
+const REGIONAL_TARGET_URLS: Record<Region, string> = {
+  [Region.SEOUL]: 'https://www.seoulshinbo.co.kr/',
+  [Region.BUSAN]: 'https://www.busansinbo.or.kr/main.do',
+  [Region.DAEGU]: 'https://www.dgsinbo.or.kr/',
+  [Region.INCHEON]: 'https://www.icsinbo.or.kr/',
+  [Region.GWANGJU]: 'https://www.gjsinbo.or.kr/',
+  [Region.DAEJEON]: 'https://www.sinbo.or.kr/',
+  [Region.ULSAN]: 'https://www.ulsanshinbo.co.kr/',
+  [Region.SEJONG]: 'https://sjsinbo.or.kr/',
+  [Region.GYEONGGI]: 'https://www.gcgf.or.kr/gcgf/intro.do',
+  [Region.GANGWON]: 'https://www.gwsinbo.or.kr/main/intro.php',
+  [Region.CHUNGBUK]: 'https://www.cbsinbo.or.kr/',
+  [Region.CHUNGNAM]: 'https://www.cnsinbo.co.kr/intro.html',
+  [Region.JEONBUK]: 'https://www.jbcredit.or.kr/',
+  [Region.JEONNAM]: 'https://www.jnsinbo.or.kr/jnsinbo/intro.do',
+  [Region.GYEONGBUK]: 'https://gbsinbo.co.kr/',
+  [Region.GYEONGNAM]: 'https://www.gnsinbo.or.kr/',
+  [Region.JEJU]: 'https://www.jcgf.or.kr/index2.php'
 };
 
 export const matchPolicyFunds = async (info: BusinessInfo): Promise<SearchResult> => {
   try {
-    // Initialize AI client inside the function to ensure the latest API Key is used
-    // This allows the key to be updated dynamically via window.aistudio.openSelectKey()
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // 1. Validate API Key
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      throw new Error("API Key가 설정되지 않았습니다. 우측 상단 '🔑 API Key' 버튼을 눌러 키를 설정해주세요.");
+    }
+
+    // 2. Initialize Client
+    const ai = new GoogleGenAI({ apiKey: apiKey });
 
     const { region, industry, bizNumber } = info;
     
-    // Determine the specific target URL for the selected region
-    const targetUrl = REGIONAL_TARGET_URLS[region as Region];
-    const regionSpecificInstruction = targetUrl 
-      ? `- ${region} 신용보증재단 자금 목록: ${targetUrl}`
-      : `- ${region} 지역 신용보증재단 홈페이지`;
+    // 타겟 URL 선정
+    const targetRegionUrl = REGIONAL_TARGET_URLS[region as Region];
+    const searchTargets = [...NATIONAL_URLS];
+    if (targetRegionUrl) {
+      searchTargets.push(targetRegionUrl);
+    }
+    const targetUrlString = searchTargets.join(', ');
 
-    const prompt = `
-      당신은 대한민국 정책자금 매칭 AI입니다.
+    // 3. Prompt Optimization for Speed
+    // Use System Instruction for formatting rules to keep user prompt clean.
+    // Enforce short string lengths (max 30 chars) to reduce output generation time.
+    const systemInstruction = `
+      You are an expert policy fund consultant.
+      Context: Business in ${region}, Industry: ${industry}.
+      Task: Find 3 currently active policy funds from these sources: ${targetUrlString}.
       
-      [기업 정보]
-      - 사업자번호: ${bizNumber}
-      - 소재지: ${region}
-      - 업종: ${industry}
-
-      [검색 대상 및 지침]
-      아래 사이트들의 **현재 모집 중인 공고 게시판**을 정밀 검색하여, 이 기업이 **지금 당장 신청 가능한 자금**을 찾아주세요.
-      
-      1. 소상공인시장진흥공단 (https://www.sbiz24.kr/#/)
-      2. ${regionSpecificInstruction}
-      
-      [필수 요청 사항]
-      1. 단순한 기관 소개나 홈페이지 메인 연결은 **절대 하지 마세요.**
-      2. **"2024년 희망리턴패키지"**, **"강원형 저신용 소상공인 지원자금"** 처럼 구체적인 **자금/공고명**을 찾으세요.
-      3. 찾은 자금명에 대해 **해당 공고의 상세 페이지 URL**을 찾아서 반드시 **링크**를 걸어주세요.
-      4. 신청 불가능하거나 마감된 자금은 제외하세요.
-
-      [출력 양식 (Markdown)]
-      
-      ## 🎯 ${region} 소재 [${industry}] 맞춤 자금 (신청 가능)
-
-      1. **[자금명 (반드시 링크로 작성)](URL)**
-         - **지원한도/금리**: [내용]
-         - **자격요건**: [핵심 요건]
-         - **신청방법**: [온라인/방문 등]
-
-      2. **[자금명 (반드시 링크로 작성)](URL)**
-         ...
-
-      (적합한 자금이 명확하지 않을 경우, 가장 유사한 현재 진행 중인 공고를 보여주세요.)
+      Output Rules:
+      1. Return ONLY a JSON array. DO NOT include markdown code blocks (e.g. \`\`\`json).
+      2. Fields: 
+         - "agency": Exact Agency Name (e.g., ${region}신용보증재단)
+         - "category": Fund Type (e.g., 운전자금)
+         - "title": Exact Fund Name
+         - "url": URL to the notice
+         - "summary": Max 30 chars description (Include limit/rate)
+         - "eligibility": Max 30 chars criteria
+      3. Speed is critical. Keep texts short.
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        temperature: 0.1, // Lower temperature for more factual results
-      },
-    });
+    const userPrompt = `Find 3 active funds for ${bizNumber} in ${region}.`;
 
-    const text = response.text || "죄송합니다. 현재 조건에 맞는 상세 공고를 찾지 못했습니다.";
-    
-    // Extract grounding chunks (sources)
-    const groundingChunks = (response.candidates?.[0]?.groundingMetadata?.groundingChunks || []) as GroundingChunk[];
+    let text = "";
+    let groundingChunks: GroundingChunk[] = [];
+
+    // Retry Logic for Google Search Permission (403 Error)
+    try {
+        // Attempt 1: Try with Google Search Grounding
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: userPrompt,
+            config: {
+                systemInstruction: systemInstruction,
+                tools: [{ googleSearch: {} }],
+                temperature: 0.1,
+            },
+        });
+        text = response.text || "";
+        groundingChunks = (response.candidates?.[0]?.groundingMetadata?.groundingChunks || []) as GroundingChunk[];
+        
+    } catch (e: any) {
+        // Handle 403 Permission Denied (Search Tool not enabled/allowed)
+        if (e.message && (e.message.includes("403") || e.message.includes("PERMISSION_DENIED") || e.message.includes("permission"))) {
+            console.warn("Google Search Grounding failed (403). Falling back to internal knowledge.");
+            
+            // Attempt 2: Fallback to Internal Knowledge
+            const response = await ai.models.generateContent({
+                model: "gemini-2.5-flash",
+                contents: userPrompt,
+                config: {
+                    // Update instruction for fallback context
+                    systemInstruction: systemInstruction + "\n(Note: Live search is unavailable. Suggest standard known funds for this region based on your knowledge.)",
+                    temperature: 0.3,
+                },
+            });
+            text = response.text || "";
+            groundingChunks = []; // No grounding in fallback
+        } else {
+            throw e; // Rethrow other errors
+        }
+    }
+
+    // Parse JSON from text
+    let funds: Fund[] = [];
+    try {
+      // Clean up potential markdown formatting if the model ignored instructions
+      let cleanText = text.trim();
+      if (cleanText.startsWith("```")) {
+         cleanText = cleanText.replace(/^```(json)?\s*/, "").replace(/```$/, "");
+      }
+      
+      funds = JSON.parse(cleanText);
+    } catch (e) {
+      // Last resort extraction
+      const jsonMatch = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (jsonMatch) {
+        try {
+            funds = JSON.parse(jsonMatch[0]);
+        } catch (e2) { console.error(e2); }
+      }
+      
+      if (funds.length === 0 && text.length > 0) {
+           funds = [{
+             agency: "AI 분석 결과",
+             category: "알림",
+             title: "상세 공고 내용을 확인해주세요",
+             url: targetRegionUrl || "",
+             summary: "자동 변환 실패",
+             eligibility: text.substring(0, 50) + "..."
+           }];
+      }
+    }
 
     return {
-      text,
+      funds,
       groundingChunks
     };
 
